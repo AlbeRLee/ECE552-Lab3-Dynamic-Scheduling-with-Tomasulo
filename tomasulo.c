@@ -179,7 +179,7 @@ static bool is_simulation_done(counter_t sim_insn) {
     }
     else
     {
-        printf("false 7\n");
+        //printf("false 7\n");
         return false;
     }
 
@@ -205,6 +205,42 @@ void CDB_To_retire(int current_cycle) {
         if (map_table[i] != NULL && map_table[i]->tom_cdb_cycle < current_cycle)
         {
              map_table[i] = NULL;
+        }
+    }
+    
+    // Now we broadcast to all other instructions waiting on us
+    
+    for (int i = 0; i < RESERV_INT_SIZE; i++)
+    {
+        if (reservINT[i] != NULL)
+        {
+            for (int j = 0; j < 3; j++)
+            {
+                if (reservINT[i]->Q[j] != NULL)
+                {
+                    if (reservINT[i]->Q[j]->index == commonDataBus->index)
+                    {
+                        reservINT[i]->Q[j] = NULL;
+                    }
+                }
+            }
+        }
+    }
+    
+    for (int i = 0; i < RESERV_FP_SIZE; i++)
+    {
+        if (reservFP[i] != NULL)
+        {
+            for (int j = 0; j < 3; j++)
+            {
+                if (reservFP[i]->Q[j] != NULL)
+                {
+                    if (reservFP[i]->Q[j]->index == commonDataBus->index)
+                    {
+                        reservFP[i]->Q[j] = NULL;
+                    }
+                }
+            }
         }
     }
     
@@ -234,37 +270,57 @@ void execute_To_CDB(int current_cycle) {
     int oldestInstrIndex = -1;
     instruction_t * oldestInstr;
 
-    for (int i = 0; i < RESERV_INT_SIZE; i++)
+    for (int i = 0; i < FU_INT_SIZE; i++)
     {
-        if (reservINT[i] != NULL && reservINT[i]->tom_execute_cycle + FU_INT_LATENCY <= current_cycle)
+        if (fuINT[i] != NULL && fuINT[i]->tom_execute_cycle + FU_INT_LATENCY <= current_cycle && fuINT[i]->tom_execute_cycle != 0)
         {
-            if (WRITES_CDB(reservINT[i]->op))
+            if (WRITES_CDB(fuINT[i]->op))
             {
-                if (oldestInstrIndex == -1 || reservINT[i]->index < oldestInstrIndex)
+                if (oldestInstrIndex == -1 || fuINT[i]->index < oldestInstrIndex)
                 {
-                    oldestInstrIndex = reservINT[i]->index;
-                    oldestInstr = reservINT[i];
+                    oldestInstrIndex = fuINT[i]->index;
+                    oldestInstr = fuINT[i];
                 }
+            }
+            else
+            {
+                // if instruction does not write to CDB, we still have to clear the reservation station and FU that the instruction occupied
+                for (int j = 0; j < RESERV_INT_SIZE; j++)
+                {
+                    if (reservINT[j] != NULL && fuINT[i]->index == reservINT[j]->index)
+                        reservINT[j] = NULL;
+                }
+                fuINT[i] = NULL;
             }
         }
     }
     
-    for (int i = 0; i < RESERV_FP_SIZE; i++)
+    for (int i = 0; i < FU_FP_SIZE; i++)
     {
-        if (reservFP[i] != NULL && reservFP[i]->tom_execute_cycle + FU_FP_LATENCY <= current_cycle)
+        if (fuFP[i] != NULL && fuFP[i]->tom_execute_cycle + FU_FP_LATENCY <= current_cycle && fuFP[i]->tom_execute_cycle != 0)
         {
-            if (WRITES_CDB(reservFP[i]->op))
+            if (WRITES_CDB(fuFP[i]->op))
             {
-                if (oldestInstrIndex == -1 || reservFP[i]->index < oldestInstrIndex)
+                if (oldestInstrIndex == -1 || fuFP[i]->index < oldestInstrIndex)
                 {
-                    oldestInstrIndex = reservFP[i]->index;
-                    oldestInstr = reservFP[i];
+                    oldestInstrIndex = fuFP[i]->index;
+                    oldestInstr = fuFP[i];
                 }
+            }
+            else
+            {
+                // if instruction does not write to CDB, we still have to clear the reservation station and FU that the instruction occupied
+                for (int j = 0; j < RESERV_FP_SIZE; j++)
+                {
+                    if (reservFP[j] != NULL && fuFP[i]->index == reservFP[j]->index)
+                        reservFP[j] = NULL;
+                }
+                fuFP[i] = NULL;
             }
         }
     }
     
-    // Nothing has completed executing this cycle
+    // Nothing that writes to the CDB has completed executing this cycle
     if (oldestInstrIndex == -1)
     {
         return;
@@ -278,7 +334,11 @@ void execute_To_CDB(int current_cycle) {
     
     for (int i = 0; i < RESERV_INT_SIZE; i++)
     {
-        if (reservINT[i] != NULL && commonDataBus->index == reservINT[i]->index) reservINT[i] = NULL;
+        if (reservINT[i] != NULL && commonDataBus->index == reservINT[i]->index)
+        {
+            printf("Integer reservation station %d is availabe. Current cycle is %d.\n", i, current_cycle);
+            reservINT[i] = NULL;
+        }
     }
     for (int i = 0; i < RESERV_FP_SIZE; i++)
     {
@@ -286,47 +346,15 @@ void execute_To_CDB(int current_cycle) {
     }
     for (int i = 0; i < FU_INT_SIZE; i++)
     {
-        if (fuINT[i] != NULL && commonDataBus->index == fuINT[i]->index) fuINT[i] = NULL;
+        if (fuINT[i] != NULL && commonDataBus->index == fuINT[i]->index)
+        {
+            printf("Integer FU %d is availabe. Current cycle is %d.\n", i, current_cycle);
+            fuINT[i] = NULL;
+        }
     }
     for (int i = 0; i < FU_FP_SIZE; i++)
     {
         if (fuFP[i] != NULL && commonDataBus->index == fuFP[i]->index) fuFP[i] = NULL;
-    }
-    
-    // Now we broadcast to all other instructions waiting on us
-    
-    for (int i = 0; i < RESERV_INT_SIZE; i++)
-    {
-        if (reservINT[i] != NULL)
-        {
-            for (int j = 0; j < 3; j++)
-            {
-                if (reservINT[i]->Q[j] != NULL)
-                    {
-                    if (reservINT[i]->Q[j]->index == commonDataBus->index)
-                    {
-                        reservINT[i]->Q[j] = NULL;
-                    }
-                }
-            }
-        }
-    }
-    
-    for (int i = 0; i < RESERV_FP_SIZE; i++)
-    {
-        if (reservFP[i] != NULL)
-        {
-            for (int j = 0; j < 3; j++)
-            {
-                if (reservFP[i]->Q[j] != NULL)
-                {
-                    if (reservFP[i]->Q[j]->index == commonDataBus->index)
-                    {
-                        reservFP[i]->Q[j] = NULL;
-                    }
-                }
-            }
-        }
     }
     
     /* ECE552 Assignment 3 - END CODE */
@@ -371,7 +399,7 @@ void issue_To_execute(int current_cycle) {
                 if (reservFP[j] != NULL)
                 {
                     // check for any RAW dependencies
-                    if (reservFP[j]->Q[0] == NULL && reservFP[j]->Q[1] == NULL && reservFP[j]->Q[2] == NULL && reservINT[j]->tom_execute_cycle == 0)
+                    if (reservFP[j]->Q[0] == NULL && reservFP[j]->Q[1] == NULL && reservFP[j]->Q[2] == NULL && reservFP[j]->tom_execute_cycle == 0)
                     {
                         // check if it is the oldest current instruction. if so, update
                         if (reservFP[j]->index < oldestInstructionValue)
@@ -388,10 +416,13 @@ void issue_To_execute(int current_cycle) {
             {
                 oldestInstruction->tom_execute_cycle = current_cycle;
                 fuFP[i] = oldestInstruction;    
+                printf("Instruction using fp FU %d.\n", i);
                 oldestInstructionValue = 9999;
                 oldestInstruction = NULL;
             }
         }
+        else
+            printf("All fp FU used. Current cycle is %d.\n", current_cycle);
     }
     
     for (int i = 0; i < FU_INT_SIZE; i++)
@@ -422,10 +453,13 @@ void issue_To_execute(int current_cycle) {
             {
                 oldestInstruction->tom_execute_cycle = current_cycle;
                 fuINT[i] = oldestInstruction;
+                printf("Instruction using integer FU %d.\n", i);
                 oldestInstructionValue = 9999;
                 oldestInstruction = NULL;
             }
         }
+        else
+            printf("All integer FU used. Current cycle is %d.\n", current_cycle);
     }
     
     return;
@@ -475,6 +509,7 @@ void dispatch_To_issue(int current_cycle) {
                 // reservation station available for our fp instruction
                 // start adding the instruction and its information into the reservation station
                 reservFP[j] = instr_queue[0];
+                printf("Instruction using fp reservation station %d.\n", j);
                 reservFP[j]->tom_issue_cycle = current_cycle;
 
                 // check for RAW dependencies in the input registers
@@ -504,6 +539,7 @@ void dispatch_To_issue(int current_cycle) {
                 // erase the last instruction in the queue since all instructions moved up one
                 instr_queue[INSTR_QUEUE_SIZE - 1] = NULL;
                 instr_queue_size--;
+                printf("decreasing instruction queue by 1. Instruction queue size: %d.\n", instr_queue_size);
 
                 return;
             }
@@ -520,6 +556,7 @@ void dispatch_To_issue(int current_cycle) {
                 // reservation station available for our int instruction
                 // start adding the instruction and its information into the reservation station
                 reservINT[j] = instr_queue[0];
+                printf("Instruction using integer reservation station %d.\n", j);
                 reservINT[j]->tom_issue_cycle = current_cycle;
 
                 // check for RAW dependencies in the input registers
@@ -549,6 +586,7 @@ void dispatch_To_issue(int current_cycle) {
                 // erase the last instruction in the queue since all instructions moved up one
                 instr_queue[INSTR_QUEUE_SIZE - 1] = NULL;
                 instr_queue_size--;
+                printf("decreasing instruction queue by 1. Instruction queue size: %d.\n", instr_queue_size);
                 
                 return;
             }
@@ -558,8 +596,6 @@ void dispatch_To_issue(int current_cycle) {
     // instruction does not require a reservation station. send to issue immediately
     if (IS_UNCOND_CTRL(instr_queue[0]->op) || IS_COND_CTRL(instr_queue[0]->op))
     {    
-        instr_queue[0]->tom_issue_cycle = current_cycle;
-        
         // remove first instruction from queue and move all other instructions in queue
         for (int i = 0; i < INSTR_QUEUE_SIZE - 1; i++)
         {
@@ -569,6 +605,7 @@ void dispatch_To_issue(int current_cycle) {
         // erase the last instruction in the queue since all instructions moved up one
         instr_queue[INSTR_QUEUE_SIZE - 1] = NULL;
         instr_queue_size--;
+        printf("decreasing instruction queue by 1. Instruction queue size: %d.\n", instr_queue_size);
         
         return;
     }  
@@ -627,6 +664,7 @@ void fetch(instruction_trace_t* trace) {
             // fetch completed at this point
             instr_queue[instr_queue_size] = inst;
             instr_queue_size++;
+            printf("Increasing instruction queue size by 1. Instruction queue size: %d. Fetch index is %d.\n", instr_queue_size, fetch_index);
             return;
         }
     }
@@ -723,8 +761,8 @@ counter_t runTomasulo(instruction_trace_t* trace)
      dispatch_To_issue(cycle);
      fetch_To_dispatch(trace, cycle);
      loopCounter++;
-     printf("loop counter is %d\n", loopCounter); 
-     printf("fetch index is %d\n", fetch_index);
+     //printf("loop counter is %d\n", loopCounter); 
+     //printf("fetch index is %d\n", fetch_index);
      /* ECE552 Assignment 3 - END CODE */ 
      
      cycle++;
