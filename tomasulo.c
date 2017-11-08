@@ -134,8 +134,15 @@ static bool is_simulation_done(counter_t sim_insn) {
  */
 void CDB_To_retire(int current_cycle) {
 
-  /* ECE552: YOUR CODE GOES HERE */
-     
+    // Check the map table for an instruction that has written to the CDB and clear it
+    
+    for (int i = 0; i < MD_TOTAL_REGS; i++)
+    {
+        if (map_table[i]->tom_cdb_cycle < current_cycle)
+        {
+             map_table[i] = NULL;
+        }
+    }
 }
 
 
@@ -154,7 +161,90 @@ void execute_To_CDB(int current_cycle) {
     // stores, conditional/unconditional branches, jumps & calls do not write to CDB
     // no forwarding/bypassing support. values broadcasted by the CDB can be read in the next cycle
     // if 2+ instructions compete for a resource (FU, CDB), priority to older instruction (done in issue_To_execute)
+    
 
+    // Find the oldest instruction that has completed executing and write it to the CDB
+    // Take the CDB data and write it back to the RS wherever it is needed
+
+    int oldestInstrIndex = -1;
+    instruction_t * oldestInstr;
+
+    for (int i = 0; i < RESERV_INT_SIZE; i++)
+    {
+        if (reservINT[i]->tom_execute_cycle + FU_INT_LATENCY < current_cycle)
+        {
+            if (oldestInstrIndex == -1 || reservINT[i]->index < oldestInstrIndex)
+            {
+                oldestInstrIndex = reservINT[i]->index;
+                oldestInstr = reservINT[i];
+            }
+        }
+    }
+    
+    for (int i = 0; i < RESERV_FP_SIZE; i++)
+    {
+        if (reservFP[i]->tom_execute_cycle + FU_FP_LATENCY < current_cycle)
+        {
+            if (oldestInstrIndex == -1 || reservFP[i]->index < oldestInstrIndex)
+            {
+                oldestInstrIndex = reservFP[i]->index;
+                oldestInstr = reservFP[i];
+            }
+        }
+    }
+    
+    // Nothing has completed executing this cycle
+    if (oldestInstrIndex == -1)
+    {
+        return;
+    }
+    
+    oldestInstr->tom_cdb_cycle = current_cycle;
+    commonDataBus = oldestInstr;
+    
+    // We should have the oldest completed instruction index in oldestInstrIndex
+    // We need to clear the functional unit this came from
+    
+    for (int i = 0; i < RESERV_INT_SIZE; i++)
+    {
+        if (commonDataBus->index == reservINT[i]->index) reservINT[i] = NULL;
+    }
+    for (int i = 0; i < RESERV_FP_SIZE; i++)
+    {
+        if (commonDataBus->index == reservFP[i]->index) reservFP[i] = NULL;
+    }
+    for (int i = 0; i < FU_INT_SIZE; i++)
+    {
+        if (commonDataBus->index == fuINT[i]->index) fuINT[i] = NULL;
+    }
+    for (int i = 0; i < FU_FP_SIZE; i++)
+    {
+        if (commonDataBus->index == fuFP[i]->index) fuFP[i] = NULL;
+    }
+    
+    // Now we broadcast to all other instructions waiting on us
+    
+    for (int i = 0; i < RESERV_INT_SIZE; i++)
+    {
+        for (int j = 0; j < 3; j++)
+        {
+            if (reservINT[i]->Q[j]->index == commonDataBus->index)
+            {
+                reservINT[i]->Q[j] = NULL;
+            }
+        }
+    }
+    
+    for (int i = 0; i < RESERV_FP_SIZE; i++)
+    {
+        for (int j = 0; j < 3; j++)
+        {
+            if (reservFP[i]->Q[j]->index == commonDataBus->index)
+            {
+                reservFP[i]->Q[j] = NULL;
+            }
+        }
+    }
 }
 
 /* 
