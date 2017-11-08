@@ -99,8 +99,8 @@ static instruction_t* map_table[MD_TOTAL_REGS];
 //the index of the last instruction fetched
 static int fetch_index = 0;
 
-static int fuINTFill = 0;
-static int fuFPFill = 0;
+static int reservINTFill = 0;
+static int reservFPFill = 0;
 
 /* FUNCTIONAL UNITS */
 
@@ -169,13 +169,90 @@ void execute_To_CDB(int current_cycle) {
  */
 void issue_To_execute(int current_cycle) {
 
-  /* ECE552: YOUR CODE GOES HERE */
+    /* ECE552 Assignment 3 - BEGIN CODE */
+    
+    int oldestInstructionValue = 9999;
+    int oldestInstructionIndex = 0;
     
     // prioritize old instructions over new instructions from dispatch (if more than 1 ready to execute)
     // execute in the functional unit which matches its reservation station
-    // ignore dependences over memory accesses (loads/stores do not have to wait for each oher if they access the same address)
+    // ignore dependences over memory accesses (loads/stores do not have to wait for each other if they access the same address)
     // remain in reservation station until execute completed
     // multiple instructions can enter the execute stage in the same cycle
+    
+    // given an open FP/INT FU, go through the FP/INT reservation stations and look for any instructions that are ready to execute
+    // to be ready to execute, it must
+    // - have no RAW dependencies in input registers (check Q array in the instruction. if all NULL then no RAW dependencies)
+    // functional units/execution is given priority to older instructions
+    
+    for (int i = 0; i < FU_FP_SIZE; i++)
+    {
+        // available FP FU
+        if (fuFP[i] == NULL)
+        {
+            // iterate through FP reservation stations to look for an instruction ready to execute
+            for (int j = 0; j < reservFPFill; j++)
+            {
+                // check for any RAW dependencies
+                if (reservFP[j]->Q[0] == NULL && reservFP[j]->Q[1] == NULL && reservFP[j]->Q[2] == NULL)
+                {
+                    // check if it is the oldest current instruction. if so, update
+                    if (reservFP[j]->index < oldestInstructionValue)
+                    {
+                        oldestInstructionValue = reservFP[j]->index;
+                        oldestInstructionIndex = j;
+                    }
+                }
+            }
+            
+            // once finished iterating through FP reservation stations, select the oldest instruction and place it into the FU for execution (if we found a ready instruction)
+            if (oldestInstructionValue != 9999)
+            {
+                reservFP[oldestInstructionIndex]->tom_execute_cycle = current_cycle;
+                fuFP[i] = reservFP[oldestInstructionIndex];      
+                oldestInstructionValue = 9999;
+                oldestInstructionIndex = 0;
+            }
+        }
+    }
+    
+    oldestInstructionValue = 9999;
+    oldestInstructionIndex = 0;
+    
+    for (int i = 0; i < FU_INT_SIZE; i++)
+    {
+        // available INT FU
+        if (fuINT[i] == NULL)
+        {
+            // iterate through INT reservation stations to look for an instruction ready to execute
+            for (int j = 0; j < reservINTFill; j++)
+            {
+                // check for any RAW dependencies
+                if (reservINT[j]->Q[0] == NULL && reservINT[j]->Q[1] == NULL && reservINT[j]->Q[2] == NULL)
+                {
+                    // check if it is the oldest current instruction. if so, update
+                    if (reservINT[j]->index < oldestInstructionValue)
+                    {
+                        oldestInstructionValue = reservINT[j]->index;
+                        oldestInstructionIndex = j;
+                    }
+                }
+            }
+            
+            // once finished iterating through INT reservation stations, select the oldest instruction and place it into the FU for execution (if we found a ready instruction)
+            if (oldestInstructionValue != 9999)
+            {
+                reservFP[oldestInstructionIndex]->tom_execute_cycle = current_cycle;
+                fuINT[i] = reservFP[oldestInstructionIndex];
+                oldestInstructionValue = 9999;
+                oldestInstructionIndex = 0;
+            }
+        }
+    }
+    
+    return;
+    
+    /* ECE552 Assignment 3 - BEGIN CODE */
 }
 
 /* 
@@ -188,51 +265,10 @@ void issue_To_execute(int current_cycle) {
  */
 void dispatch_To_issue(int current_cycle) {
 
-  /* ECE552: YOUR CODE GOES HERE */
+    /* ECE552 Assignment 3 - BEGIN CODE */
       
     // check if a reservation station is available
     // if not, stall
-
-    // instruction requires a floating reservation station
-    if (IS_FCOMP(instr_queue[0]->op))
-    {
-        // check that a floating reservation station is available
-        if (fuFPFill == 4)
-            // no floating reservation station available. stall
-            return;
-        else
-        {
-            // reservation station available for our fp instruction
-            // start adding the instruction and its information into the reservation station
-            reservFP[fuFPFill] = instr_queue[0];
-            
-            fuFPFill++;
-        }
-    }
-
-    // instruction requires an integer reservation station
-    if (IS_ICOMP(instr_queue[0]->op))
-    {
-        // check that an integer reservation station is available
-        if (fuINTFill == 4)
-            // no integer reservation station available. stall
-            return;
-        else
-        {
-            // reservation station available for our int instruction
-            // start adding the instruction and its information into the reservation station
-            reservINT[fuINTFill] = instr_queue[0];
-            
-            fuINTFill++;
-        }
-    }
-    
-    // instruction does not require a reservation station. send to issue immediately
-    if (IS_UNCOND_CTRL(instr_queue[0]->op) || IS_COND_CTRL(instr_queue[0]->op))
-    {
-        instr_queue[0]->tom_issue_cycle = current_cycle;
-        return;
-    }
     
     // allocate a reservation station entry based on the instructions opcode
     // - do not issue a reservation station for an unconditional branch
@@ -241,8 +277,127 @@ void dispatch_To_issue(int current_cycle) {
     // mark any RAW dependencies in the reservation entry
     
     // if there is RAW hazard, stall
-    // if there are no FU's, stall
     
+    // we are only moving 1 instruction (oldest) to issue
+    
+    int input_reg = 3;
+    int output_reg = 2;
+    
+    // instruction requires a floating reservation station
+    if (IS_FCOMP(instr_queue[0]->op))
+    {
+        // check that a floating reservation station is available
+        if (reservFPFill == 4)
+            // no floating reservation station available. stall
+            return;
+        else
+        {
+            // reservation station available for our fp instruction
+            // start adding the instruction and its information into the reservation station
+            reservFP[reservFPFill] = instr_queue[0];
+            reservFP[reservFPFill]->tom_issue_cycle = current_cycle;
+            
+            // check for RAW dependencies in the input registers
+            for (int i = 0; i < input_reg; i++)
+            {
+                // if input register exists, check the map table to see if available
+                // place the map table value into the Q array which contain the results of the input registers it needs to wait for
+                if (reservFP[reservFPFill]->r_in[i] != DNA)
+                    reservFP[reservFPFill]->Q[i] = map_table[reservFP[reservFPFill]->r_in[i]];
+            }
+            
+            // add output registers to map table for other instructions
+            for (int i = 0; i < output_reg; i++)
+            {
+                // if output register exists, set the map table value such that the result comes from that reservation station
+                if (reservFP[reservFPFill]->r_out[i] != DNA)
+                    map_table[reservFP[reservFPFill]->r_out[i]] = reservFP[reservFPFill];
+            }
+            
+            // update instruction queue
+            // remove first instruction from queue and move all other instructions in queue
+            for (int i = 0; i < INSTR_QUEUE_SIZE - 1; i++)
+            {
+               instr_queue[i] = instr_queue[i+1];
+            }
+        
+            // erase the last instruction in the queue since all instructions moved up one
+            instr_queue[INSTR_QUEUE_SIZE - 1] = NULL;
+            instr_queue_size--;
+            
+            // update free spots in FP reservation stations
+            reservFPFill++;
+            return;
+        }
+    }
+
+    // instruction requires an integer reservation station (this includes loads and stores as well)
+    if (IS_ICOMP(instr_queue[0]->op) || IS_LOAD(instr_queue[0]->op) || IS_STORE(instr_queue[0]->op))
+    {
+        // check that an integer reservation station is available
+        if (reservINTFill == 4)
+            // no integer reservation station available. stall
+            return;
+        else
+        {
+            // reservation station available for our int instruction
+            // start adding the instruction and its information into the reservation station
+            reservINT[reservINTFill] = instr_queue[0];
+            reservINT[reservINTFill]->tom_issue_cycle = current_cycle;
+            
+            // check for RAW dependencies in the input registers
+            for (int i = 0; i < input_reg; i++)
+            {
+                // if input register exists, check the map table to see if available
+                // place the map table value into the Q array which contain the results of the input registers it needs to wait for
+                if (reservINT[reservINTFill]->r_in[i] != DNA)
+                    reservINT[reservINTFill]->Q[i] = map_table[reservINT[reservINTFill]->r_in[i]];
+            }
+            
+            // add output registers to map table for other instructions
+            for (int i = 0; i < output_reg; i++)
+            {
+                // if output register exists, set the map table value such that the result comes from that reservation station
+                if (reservINT[reservINTFill]->r_out[i] != DNA)
+                    map_table[reservINT[reservINTFill]->r_out[i]] = reservINT[reservINTFill];
+            }
+            
+            // update instruction queue
+            // remove first instruction from queue and move all other instructions in queue
+            for (int i = 0; i < INSTR_QUEUE_SIZE - 1; i++)
+            {
+               instr_queue[i] = instr_queue[i+1];
+            }
+        
+            // erase the last instruction in the queue since all instructions moved up one
+            instr_queue[INSTR_QUEUE_SIZE - 1] = NULL;
+            instr_queue_size--;
+            
+            // update free spots in integer reservation stations
+            reservINTFill++;
+            return;
+        }
+    }
+    
+    // instruction does not require a reservation station. send to issue immediately
+    if (IS_UNCOND_CTRL(instr_queue[0]->op) || IS_COND_CTRL(instr_queue[0]->op))
+    {    
+        instr_queue[0]->tom_issue_cycle = current_cycle;
+        
+        // remove first instruction from queue and move all other instructions in queue
+        for (int i = 0; i < INSTR_QUEUE_SIZE - 1; i++)
+        {
+            instr_queue[i] = instr_queue[i+1];
+        }
+        
+        // erase the last instruction in the queue since all instructions moved up one
+        instr_queue[INSTR_QUEUE_SIZE - 1] = NULL;
+        instr_queue_size--;
+        
+        return;
+    }  
+    
+    /* ECE552 Assignment 3 - END CODE */
 }
 
 /* 
@@ -300,6 +455,9 @@ void fetch(instruction_trace_t* trace) {
         }
     }
     
+    //no space in the IFQ, stall
+    return;
+    
     /* ECE552 Assignment 3 - END CODE */
 }
 
@@ -314,19 +472,24 @@ void fetch(instruction_trace_t* trace) {
  */
 void fetch_To_dispatch(instruction_trace_t* trace, int current_cycle) {
 
-  fetch(trace);
+    fetch(trace);
 
-  /* ECE552: YOUR CODE GOES HERE */
-  // check if there is an instruction in the IFQ
-  if (instr_queue_size == 0)
-      return;
+    /* ECE552 Assignment 3 - BEGIN CODE */
   
-  // send instructions to dispatch after being fetched
-  for (int i = 0; i < instr_queue_size; i++)
-  {
-      if (instr_queue[i]->tom_dispatch_cycle == 0)
-          instr_queue[i]->tom_dispatch_cycle = current_cycle;
-  }
+    // check if there is an instruction in the IFQ
+    if (instr_queue_size == 0)
+        return;
+
+    // send instructions to dispatch after being fetched
+    for (int i = 0; i < instr_queue_size; i++)
+    {
+        if (instr_queue[i]->tom_dispatch_cycle == 0)
+            instr_queue[i]->tom_dispatch_cycle = current_cycle;
+    }
+  
+    return;
+    
+    /* ECE552 Assignment 3 - END CODE */
 }
 
 /* 
