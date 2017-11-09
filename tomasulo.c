@@ -364,7 +364,7 @@ void issue_To_execute(int current_cycle) {
 
     /* ECE552 Assignment 3 - BEGIN CODE */
     
-    int oldestInstructionValue = 1000001;
+    int oldestInstrIndex = -1;
     instruction_t *oldestInstruction = NULL;
     
     // prioritize old instructions over new instructions from dispatch (if more than 1 ready to execute)
@@ -392,10 +392,10 @@ void issue_To_execute(int current_cycle) {
                     if (reservFP[j]->Q[0] == NULL && reservFP[j]->Q[1] == NULL && reservFP[j]->Q[2] == NULL && reservFP[j]->tom_execute_cycle == 0)
                     {
                         // check if it is the oldest current instruction. if so, update
-                        if (reservFP[j]->index < oldestInstructionValue)
+                        if (oldestInstrIndex == -1  || reservFP[j]->index < oldestInstrIndex)
                         {
                             oldestInstruction = reservFP[j];
-                            oldestInstructionValue = reservFP[j]->index;
+                            oldestInstrIndex = reservFP[j]->index;
                         }
                     }
                 }
@@ -406,7 +406,7 @@ void issue_To_execute(int current_cycle) {
             {
                 oldestInstruction->tom_execute_cycle = current_cycle;
                 fuFP[i] = oldestInstruction;    
-                oldestInstructionValue = 1000001;
+                oldestInstrIndex = -1;
                 oldestInstruction = NULL;
             }
         }
@@ -426,10 +426,10 @@ void issue_To_execute(int current_cycle) {
                     if (reservINT[j]->Q[0] == NULL && reservINT[j]->Q[1] == NULL && reservINT[j]->Q[2] == NULL && reservINT[j]->tom_execute_cycle == 0)
                     {
                         // check if it is the oldest current instruction. if so, update
-                        if (reservINT[j]->index < oldestInstructionValue)
+                        if (oldestInstrIndex == -1 || reservINT[j]->index < oldestInstrIndex)
                         {
                             oldestInstruction = reservINT[j];
-                            oldestInstructionValue = reservINT[j]->index;
+                            oldestInstrIndex = reservINT[j]->index;
                         }
                     }
                 }
@@ -440,7 +440,7 @@ void issue_To_execute(int current_cycle) {
             {
                 oldestInstruction->tom_execute_cycle = current_cycle;
                 fuINT[i] = oldestInstruction;
-                oldestInstructionValue = 1000001;
+                oldestInstrIndex = -1;
                 oldestInstruction = NULL;
             }
         }
