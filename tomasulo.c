@@ -176,7 +176,7 @@ static bool is_simulation_done(counter_t sim_insn) {
         return false;
     }
 
-  //return true; //ECE552: you can change this as needed; we've added this so the code provided to you compiles
+    /* ECE552 Assignment 3 - END CODE */
 }
 
 /* 
@@ -448,7 +448,7 @@ void issue_To_execute(int current_cycle) {
     
     return;
     
-    /* ECE552 Assignment 3 - BEGIN CODE */
+    /* ECE552 Assignment 3 - END CODE */
 }
 
 /* 
@@ -743,10 +743,10 @@ counter_t runTomasulo(instruction_trace_t* trace)
      dispatch_To_issue(cycle);
      fetch_To_dispatch(trace, cycle);
      loopCounter++;
+     /* ECE552 Assignment 3 - END CODE */ 
      //printf("# instructions in IFQ: %d.\n", instr_queue_size);
      //printf("loop counter is %d\n", loopCounter); 
      //printf("fetch index is %d\n", fetch_index);
-     /* ECE552 Assignment 3 - END CODE */ 
      /*
      for (int i = 0; i < RESERV_INT_SIZE; i++)
      {
