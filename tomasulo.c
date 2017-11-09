@@ -126,7 +126,6 @@ static bool is_simulation_done(counter_t sim_insn) {
         // check the instruction queue
         if (instr_queue_size > 0)
         {
-            printf("false 1\n");
             return false;
         }
         
@@ -135,7 +134,6 @@ static bool is_simulation_done(counter_t sim_insn) {
         {
             if (reservFP[i] != NULL)
             {
-                printf("false 2\n");
                 return false;
             }
         }
@@ -144,7 +142,6 @@ static bool is_simulation_done(counter_t sim_insn) {
         {
             if (reservINT[i] != NULL)
             {
-                printf("false 3\n");
                 return false;
             }
         }
@@ -153,7 +150,6 @@ static bool is_simulation_done(counter_t sim_insn) {
         {
             if (fuFP[i] != NULL)
             {
-                printf("false 4\n");
                 return false;
             }
         }
@@ -162,7 +158,6 @@ static bool is_simulation_done(counter_t sim_insn) {
         {
             if (fuFP[i] != NULL)
             {
-                printf("false 5\n");
                 return false;
             }
         }
@@ -170,7 +165,6 @@ static bool is_simulation_done(counter_t sim_insn) {
         // check that the CDB is clear
         if (commonDataBus != NULL)
         {
-            printf("false 6\n");
             return false;
         }
         
@@ -179,7 +173,6 @@ static bool is_simulation_done(counter_t sim_insn) {
     }
     else
     {
-        //printf("false 7\n");
         return false;
     }
 
@@ -200,9 +193,12 @@ void CDB_To_retire(int current_cycle) {
     
     // Check the map table for an instruction that has written to the CDB and clear it
     
+    if (commonDataBus == NULL)
+        return;
+    
     for (int i = 0; i < MD_TOTAL_REGS; i++)
     {
-        if (map_table[i] != NULL && map_table[i]->tom_cdb_cycle < current_cycle)
+        if (map_table[i] != NULL && map_table[i]->index == commonDataBus->index)
         {
              map_table[i] = NULL;
         }
@@ -243,6 +239,8 @@ void CDB_To_retire(int current_cycle) {
             }
         }
     }
+    
+    commonDataBus = NULL;
     
     /* ECE552 Assignment 3 - END CODE */
 }
@@ -334,11 +332,7 @@ void execute_To_CDB(int current_cycle) {
     
     for (int i = 0; i < RESERV_INT_SIZE; i++)
     {
-        if (reservINT[i] != NULL && commonDataBus->index == reservINT[i]->index)
-        {
-            printf("Integer reservation station %d is availabe. Current cycle is %d.\n", i, current_cycle);
-            reservINT[i] = NULL;
-        }
+        if (reservINT[i] != NULL && commonDataBus->index == reservINT[i]->index) reservINT[i] = NULL;
     }
     for (int i = 0; i < RESERV_FP_SIZE; i++)
     {
@@ -346,11 +340,7 @@ void execute_To_CDB(int current_cycle) {
     }
     for (int i = 0; i < FU_INT_SIZE; i++)
     {
-        if (fuINT[i] != NULL && commonDataBus->index == fuINT[i]->index)
-        {
-            printf("Integer FU %d is availabe. Current cycle is %d.\n", i, current_cycle);
-            fuINT[i] = NULL;
-        }
+        if (fuINT[i] != NULL && commonDataBus->index == fuINT[i]->index) fuINT[i] = NULL;
     }
     for (int i = 0; i < FU_FP_SIZE; i++)
     {
@@ -374,7 +364,7 @@ void issue_To_execute(int current_cycle) {
 
     /* ECE552 Assignment 3 - BEGIN CODE */
     
-    int oldestInstructionValue = 9999;
+    int oldestInstructionValue = 1000001;
     instruction_t *oldestInstruction = NULL;
     
     // prioritize old instructions over new instructions from dispatch (if more than 1 ready to execute)
@@ -416,13 +406,10 @@ void issue_To_execute(int current_cycle) {
             {
                 oldestInstruction->tom_execute_cycle = current_cycle;
                 fuFP[i] = oldestInstruction;    
-                printf("Instruction using fp FU %d.\n", i);
-                oldestInstructionValue = 9999;
+                oldestInstructionValue = 1000001;
                 oldestInstruction = NULL;
             }
         }
-        else
-            printf("All fp FU used. Current cycle is %d.\n", current_cycle);
     }
     
     for (int i = 0; i < FU_INT_SIZE; i++)
@@ -453,13 +440,10 @@ void issue_To_execute(int current_cycle) {
             {
                 oldestInstruction->tom_execute_cycle = current_cycle;
                 fuINT[i] = oldestInstruction;
-                printf("Instruction using integer FU %d.\n", i);
-                oldestInstructionValue = 9999;
+                oldestInstructionValue = 1000001;
                 oldestInstruction = NULL;
             }
         }
-        else
-            printf("All integer FU used. Current cycle is %d.\n", current_cycle);
     }
     
     return;
@@ -509,7 +493,6 @@ void dispatch_To_issue(int current_cycle) {
                 // reservation station available for our fp instruction
                 // start adding the instruction and its information into the reservation station
                 reservFP[j] = instr_queue[0];
-                printf("Instruction using fp reservation station %d.\n", j);
                 reservFP[j]->tom_issue_cycle = current_cycle;
 
                 // check for RAW dependencies in the input registers
@@ -539,7 +522,6 @@ void dispatch_To_issue(int current_cycle) {
                 // erase the last instruction in the queue since all instructions moved up one
                 instr_queue[INSTR_QUEUE_SIZE - 1] = NULL;
                 instr_queue_size--;
-                printf("decreasing instruction queue by 1. Instruction queue size: %d.\n", instr_queue_size);
 
                 return;
             }
@@ -556,7 +538,6 @@ void dispatch_To_issue(int current_cycle) {
                 // reservation station available for our int instruction
                 // start adding the instruction and its information into the reservation station
                 reservINT[j] = instr_queue[0];
-                printf("Instruction using integer reservation station %d.\n", j);
                 reservINT[j]->tom_issue_cycle = current_cycle;
 
                 // check for RAW dependencies in the input registers
@@ -586,7 +567,6 @@ void dispatch_To_issue(int current_cycle) {
                 // erase the last instruction in the queue since all instructions moved up one
                 instr_queue[INSTR_QUEUE_SIZE - 1] = NULL;
                 instr_queue_size--;
-                printf("decreasing instruction queue by 1. Instruction queue size: %d.\n", instr_queue_size);
                 
                 return;
             }
@@ -605,7 +585,6 @@ void dispatch_To_issue(int current_cycle) {
         // erase the last instruction in the queue since all instructions moved up one
         instr_queue[INSTR_QUEUE_SIZE - 1] = NULL;
         instr_queue_size--;
-        printf("decreasing instruction queue by 1. Instruction queue size: %d.\n", instr_queue_size);
         
         return;
     }  
@@ -639,6 +618,10 @@ void fetch(instruction_trace_t* trace) {
         // grab the next instruction in the trace
         instruction_t *inst = get_instr(trace, fetch_index);
         
+        // check for garbage fetches -> fetches past the max instructions (this will occur because we are still completing the current instructions)
+        if (inst->index == 0 && inst->op == 0)
+            return;
+        
         // if the inst is empty, trace is complete
         if (inst == NULL)
             return;
@@ -664,7 +647,6 @@ void fetch(instruction_trace_t* trace) {
             // fetch completed at this point
             instr_queue[instr_queue_size] = inst;
             instr_queue_size++;
-            printf("Increasing instruction queue size by 1. Instruction queue size: %d. Fetch index is %d.\n", instr_queue_size, fetch_index);
             return;
         }
     }
@@ -761,10 +743,43 @@ counter_t runTomasulo(instruction_trace_t* trace)
      dispatch_To_issue(cycle);
      fetch_To_dispatch(trace, cycle);
      loopCounter++;
+     //printf("# instructions in IFQ: %d.\n", instr_queue_size);
      //printf("loop counter is %d\n", loopCounter); 
      //printf("fetch index is %d\n", fetch_index);
      /* ECE552 Assignment 3 - END CODE */ 
+     /*
+     for (int i = 0; i < RESERV_INT_SIZE; i++)
+     {
+         if (reservINT[i] == NULL)
+             printf("integer reservation station %d is free.\n", i);
+         else
+             printf("integer reservation station %d is not free. Instruction index using RS is %d.\n", i, reservINT[i]->index);
+     }
      
+     for (int i = 0; i < RESERV_FP_SIZE; i++)
+     {
+         if (reservFP[i] == NULL)
+             printf("fp reservation station %d is free.\n", i);
+         else
+             printf("fp reservation station %d is not free. Instruction index using RS is %d.\n", i, reservFP[i]->index);
+     }
+     
+     for (int i = 0; i < FU_INT_SIZE; i++)
+     {
+         if (fuINT[i] == NULL)
+             printf("integer FU %d is free.\n", i);
+         else
+             printf("integer FU %d is not free. Instruction index using FU is %d.\n", i, fuINT[i]->index);
+     }
+     
+     for (int i = 0; i < FU_FP_SIZE; i++)
+     {
+         if (fuFP[i] == NULL)
+             printf("fp FU %d is free.\n", i);
+         else
+             printf("fp FU %d is not free. Instruction index using FU is %d.\n", i, fuFP[i]->index);
+     }
+     */
      cycle++;
 
      if (is_simulation_done(sim_num_insn))
